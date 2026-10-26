@@ -10,7 +10,7 @@ import { URLS } from "../../../../urls";
 
 /**
  * passport.bilibili.com/x/passport-tv-login/qrcode/poll
- * 
+ *
  * @param authCode 二维码
  */
 export async function poll(authCode: string) {

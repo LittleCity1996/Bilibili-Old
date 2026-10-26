@@ -7,13 +7,14 @@ import { apiArticleCards } from "../io/api-article-cards";
 import { apiIndexTopRcmd } from "../io/api-index-top-rcmd";
 import { apiNewlist } from "../io/api-newlist";
 import { apiSeasonRankList } from "../io/api-season-rank-list";
+import { wbiFetch } from "../io/api-wbi";
 import { apiWebshowLocs, IApiWebshowLocsResponse } from "../io/api-webshow-locs";
 import { uid } from "../utils/conf/uid";
 import { debug } from "../utils/debug";
 import { addElement, offset } from "../utils/element";
 import { integerFormat } from "../utils/format/integer";
 import { unitFormat } from "../utils/format/unit";
-import { urlObj } from "../utils/format/url";
+import { objUrl, urlObj } from "../utils/format/url";
 import { jsonpHook } from "../utils/hook/node";
 import { xhrHook } from "../utils/hook/xhr";
 import { htmlVnode, Vdom } from "../utils/htmlvnode";
@@ -38,6 +39,137 @@ const __INITIAL_STATE__ = {
     recommendData: <unknown>null
 };
 
+const REGION_FEED_CODES: Record<number, number> = {
+    1: 1005,
+    3: 1003,
+    4: 1008,
+    5: 1002,
+    36: 1010,
+    119: 1007,
+    129: 1004,
+    155: 1014,
+    160: 1029,
+    181: 1001,
+    188: 1012,
+    202: 1009
+};
+
+const RANKING_REGION_CODES: Record<number, number> = {
+    1: 1005,
+    3: 1003,
+    4: 1008,
+    5: 1002,
+    36: 1010,
+    119: 1007,
+    129: 1004,
+    155: 1014,
+    181: 1001,
+    188: 1012
+};
+
+const PGC_FEED_NAMES: Record<number, string> = {
+    23: "movie",
+    11: "tv",
+    177: "documentary"
+};
+
+async function fetchRegionFeed(tid: number) {
+    const region = REGION_FEED_CODES[tid];
+    if (!region) return <IAidDatail[]>[];
+    const response = await fetch(objUrl("https://api.bilibili.com/x/web-interface/region/feed/rcmd", {
+        display_id: 1,
+        request_cnt: 10,
+        from_region: region,
+        device: "web",
+        plat: 30,
+        web_location: 333.40138
+    }), {
+        credentials: "include"
+    });
+    const json = await response.json();
+    if (json.code !== 0 || !json.data || !Array.isArray(json.data.archives)) return <IAidDatail[]>[];
+    return <IAidDatail[]>json.data.archives.map((d: any) => ({
+        ...d,
+        pic: d.cover || d.pic,
+        owner: d.author,
+        stat: Object.assign({ view: 0, danmaku: 0, coin: 0 }, d.stat)
+    }));
+}
+
+async function fetchRankingList(tid: number, type: "all" | "origin") {
+    const region = RANKING_REGION_CODES[tid];
+    if (!region) return <any[]>[];
+    try {
+        const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
+            rid: region,
+            type,
+            web_location: 333.934
+        }, {
+            credentials: "include"
+        });
+        const json = await response.json();
+        if (json.code !== 0 || !json.data || !Array.isArray(json.data.list)) return <any[]>[];
+        return json.data.list.map((d: any) => ({
+            ...d,
+            play: d.stat?.view || 0,
+            video_review: d.stat?.danmaku || 0,
+            favorites: d.stat?.favorite || 0,
+            coins: d.stat?.coin || 0,
+            review: d.stat?.reply || 0,
+            pts: d.score || 0,
+            author: d.owner?.name || "",
+            mid: d.owner?.mid || 0,
+            description: d.desc || "",
+            typename: d.tname || ""
+        }));
+    } catch (e) {
+        debug.error("ranking", e);
+        return <any[]>[];
+    }
+}
+
+async function fetchPgcFeed(tid: number) {
+    const name = PGC_FEED_NAMES[tid];
+    if (!name) return <IAidDatail[]>[];
+    const response = await fetch(`https://api.bilibili.com/pgc/page/web/feed?name=${name}&coursor=${Math.floor(Math.random() * 277) + 24}&new_cursor_status=true`, {
+        credentials: "include"
+    });
+    const json = await response.json();
+    if (json.code !== 0 || !json.data || !Array.isArray(json.data.items)) return <IAidDatail[]>[];
+    const items: any[] = json.data.items.slice(0, 10);
+    const seasons = new Map<number, any[]>();
+    const seasonIds = Array.from(new Set(items.map(d => Number(d.season_id))));
+    await Promise.all(seasonIds.map(async season_id => {
+        try {
+            const detail = await fetch(`https://api.bilibili.com/pgc/view/web/season?season_id=${season_id}`, {
+                credentials: "include"
+            });
+            const data = await detail.json();
+            seasons.set(season_id, data.result?.episodes || data.data?.episodes || []);
+        } catch (e) {
+            seasons.set(season_id, []);
+        }
+    }));
+    const archives: IAidDatail[] = [];
+    for (const item of items) {
+        const episode = (seasons.get(Number(item.season_id)) || []).find(d => d.id === item.episode_id || d.ep_id === item.episode_id);
+        if (!episode || !episode.aid || !episode.bvid) continue;
+        archives.push(<IAidDatail>{
+            ...item,
+            aid: episode.aid,
+            bvid: episode.bvid,
+            cid: episode.cid,
+            pic: item.cover,
+            title: item.title,
+            duration: Math.floor((episode.duration || 0) / 1000),
+            owner: { mid: 0, name: "", face: "" },
+            stat: Object.assign({ view: 0, danmaku: 0, coin: 0 }, item.stat),
+            desc: item.sub_title || ""
+        });
+    }
+    return archives;
+}
+
 /** 重构主页 */
 export class PageIndex extends Page {
     constructor() {
@@ -50,6 +182,7 @@ export class PageIndex extends Page {
         this.ranking();
         this.newlist();
         this.region();
+        this.rankingList();
         this.recommendSpecial();
         Header.primaryMenu();
         Header.banner();
@@ -135,6 +268,18 @@ export class PageIndex extends Page {
             })
         });
     }
+    protected rankingList() {
+        jsonpHook.async("api.bilibili.com/x/web-interface/ranking/region", url => {
+            const tid = Number(urlObj(url).rid);
+            return !!RANKING_REGION_CODES[tid];
+        }, async url => {
+            const obj = urlObj(url);
+            const tid = Number(obj.rid);
+            const type = obj.original === "1" ? "origin" : "all";
+            const data = await fetchRankingList(tid, type);
+            return { code: 0, message: "0", ttl: 1, data };
+        }, false);
+    }
     /** 修复直播推荐 */
     protected roomRecommend() {
         xhrHook("api.live.bilibili.com/room/v1/RoomRecommend/biliIndexRec", args => {
@@ -157,7 +302,31 @@ export class PageIndex extends Page {
     }
     /** 用户热点最新投稿修复资讯区最新投稿 */
     protected newlist() {
-        jsonpHook(["newlist", "rid=202"], url => url.replace("rid=202", "rid=203"), undefined, false);
+        jsonpHook(["newlist", "rid=202"], url => {
+            const obj = urlObj(url);
+            delete obj.w_rid;
+            obj.rid = 203;
+            return objUrl(url.split("?")[0], obj);
+        }, undefined, false);
+        jsonpHook(["newlist", "rid=168"], url => {
+            const obj = urlObj(url);
+            delete obj.w_rid;
+            obj.rid = 167;
+            return objUrl(url.split("?")[0], obj);
+        }, undefined, false);
+        jsonpHook.async("api.bilibili.com/x/web-interface/dynamic/region", undefined, async url => {
+            const tid = Number(urlObj(url).rid);
+            let archives: IAidDatail[] = [];
+            try {
+                if (tid === 13) archives = await apiNewlist(13, 10);
+                else if (tid === 168) archives = await apiNewlist(167, 10);
+                else if (PGC_FEED_NAMES[tid]) archives = await fetchPgcFeed(tid);
+                else archives = await fetchRegionFeed(tid);
+            } catch (e) {
+                debug.error("有新动态", e);
+            }
+            return { code: 0, message: "0", ttl: 1, data: { archives } };
+        }, false);
     }
     /** 修正电影/电视剧/纪录片排行 */
     protected region() {

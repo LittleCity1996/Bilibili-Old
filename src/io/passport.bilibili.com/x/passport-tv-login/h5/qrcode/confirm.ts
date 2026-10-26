@@ -11,7 +11,7 @@ import { URLS } from "../../../../../urls";
 
 /**
  * passport.bilibili.com/x/passport-tv-login/h5/qrcode/confirm
- * 
+ *
  * @param authCode 二维码
  * @param csrf cookie.bili_jct
  */

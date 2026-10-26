@@ -9,7 +9,7 @@ import { user } from "../core/user";
 import { videoInfo } from "../core/video-info";
 import html from '../html/bangumi.html';
 import { jsonCheck } from "../io/api";
-import { apiBangumiSeason, IBangumiEpisode, IBangumiSeasonResponse } from "../io/api-bangumi-season";
+import { IBangumiEpisode, IBangumiSeasonResponse } from "../io/api-bangumi-season";
 import { ApiGlobalOgvView } from "../io/api-global-view";
 import { apiPgcSeason } from "../io/api-pgc-season";
 import { ISubtitle, PlayerResponse } from "../io/api-player";
@@ -143,7 +143,7 @@ export class PageBangumi extends Page {
             } else {
                 await apiTagInfo((<any>window).__INITIAL_STATE__.mediaInfo.title)
                     .then(d => {
-                        return apiTagTop(d.tag_id)
+                        return apiTagTop((d as any).tag_id)
                     })
                     .then(d => {
                         response.data = related[(<any>window).__INITIAL_STATE__.mediaInfo.title] = d;
@@ -158,7 +158,7 @@ export class PageBangumi extends Page {
     /** 初始化`__INITIAL_STATE__` */
     protected initialState() {
         const data = this.epid ? { ep_id: this.epid } : { season_id: this.ssid };
-        Promise.allSettled([apiBangumiSeason(data), apiSeasonStatus(data), new Promise(r => poll(() => this.initilized, r))])
+        Promise.allSettled([apiPgcSeason(data), apiSeasonStatus(data), new Promise(r => poll(() => this.initilized, r))])
             .then(d => <[IBangumiSeasonResponse?, ISeasonStatusResponse?]>d.map(d => d.status === 'fulfilled' && d.value))
             .then(async d => {
                 const t = (<any>window).__INITIAL_STATE__;

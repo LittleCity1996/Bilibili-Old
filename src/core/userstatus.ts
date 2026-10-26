@@ -31,8 +31,8 @@ export const userStatus = {
         status: false,
         /** 服务器类型 */
         server: '内置',
-        /** 东南亚（泰区）代理服务器 */
-        th: 'api.global.bilibili.com',
+        /** 东南亚（泰区）代理服务器（已失效，请手动填写可用代理） */
+        th: '',
         /** 台湾代理服务器 */
         tw: '',
         /** 香港代理服务器 */

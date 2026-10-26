@@ -1,10 +1,9 @@
-import { jsonCheck } from "./api";
-import { ApiSign } from "./api-sign";
+import { IApiData, IOwner, IStat, jsonCheck } from "./api";
 import { URLS } from "./urls";
+import { wbiFetch } from "./api-wbi";
 
-export class ApiSearch extends ApiSign {
+export class ApiSearch {
     constructor(keyword: string) {
-        super(URLS.SEARCH, 'c1b107428d337928');
         this.data = Object.assign({ keyword: keyword }, {
             type: 'json',
             build: 404000,
@@ -22,9 +21,12 @@ export class ApiSearch extends ApiSign {
             movie_num: 1
         });
     }
+    private data: Record<string, any>;
     async getData() {
-        const response = await fetch(this.sign().toJSON());
-        const json = await response.json();
+        const res = await wbiFetch(URLS.SEARCH, this.data, {
+            credentials: 'include'
+        });
+        const json = await res.json();
         return <IApiSearchAndroid>jsonCheck(json);
     }
     /**

@@ -169,7 +169,11 @@ class VideoLimit {
     }
     /** 访问泰区代理 */
     protected async th(obj: Record<string, string | number>) {
-        const d = await new ApiGlobalOgvPlayurl(<any>obj, user.userStatus!.videoLimit.th).toPlayurl();
+        const server = user.userStatus!.videoLimit.th;
+        if (!server) {
+            throw new Error('泰区代理服务器未配置，请在设置中填写可用的代理服务器域名，或禁用解除限制功能');
+        }
+        const d = await new ApiGlobalOgvPlayurl(<any>obj, server).toPlayurl();
         toast.warning("已替换UPOS服务器，卡加载时请到设置中更换服务器或者禁用！", `CDN：${user.userStatus!.uposReplace.th}`, `UPOS：${UPOS[<'ks3（金山）'>user.userStatus!.uposReplace.th]}`);
         return JSON.parse(this.uposReplace(JSON.stringify(d), <'ks3（金山）'>user.userStatus!.uposReplace.th));
     }

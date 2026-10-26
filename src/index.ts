@@ -30,6 +30,7 @@ import { UI } from './core/ui';
 import toview from './json/toview.json';
 import { PageHttps, PageWild } from './page/wild';
 import { PageAnime } from './page/channel/anime';
+import { PageChannel } from './page/channel/channel';
 import { PageMovie } from './page/channel/movie';
 import { PageTv } from './page/channel/tv';
 import { PageDocumentary } from './page/channel/documentary';
@@ -78,7 +79,7 @@ user.addCallback(status => {
         if (/\/playlist\/detail\/pl/.test(location.href)) {
             new PagePlaylistDetail();
         }
-        if (status.ranking && /\/v\/popular\//.test(location.href)) {
+        if (status.ranking && (/\/v\/popular\//.test(location.href) || /^\/(?:v\/)?ranking(?:\/|$)/.test(location.pathname))) {
             new PageRanking();
         }
         if (status.read && /\/read\/[Cc][Vv]/.test(location.href)) {
@@ -109,10 +110,9 @@ user.addCallback(status => {
             if (/\/documentary\/?$/.test(location.pathname)) {
                 new PageDocumentary();
             }
-            // 二级分区实在太多，难以一一适配
-            // if (/\/v\/(douga|music|dance|game|knowledge|tech|life|kichiku|fashion|information|ent|cinephile)\/?$/.test(location.pathname)) {
-            //     new PageChannel();
-            // }
+            if (/^\/(?:c|v)\/douga\/?$/.test(location.pathname)) {
+                new PageChannel();
+            }
         }
     }
     player.nanoPermit();

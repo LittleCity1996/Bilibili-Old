@@ -1,14 +1,14 @@
-import { objUrl } from "../utils/format/url";
 import { IApiData, IOwner, IStat, jsonCheck } from "./api";
 import { URLS } from "./urls";
+import { wbiFetch } from "./api-wbi";
 
 export async function apiIndexTopRcmd(data?: IApiIndexTopRcmdData) {
-    const response = await fetch(objUrl(URLS.INDEX_TOP_RCMD, {
+    const res = await wbiFetch(URLS.INDEX_TOP_RCMD, {
         fresh_type: data?.fresh_type || 3
-    }), {
+    }, {
         credentials: data?.credentials || 'include'
     });
-    const json = await response.json();
+    const json = await res.json();
     return <IApiIndexTopRcmdResponse[]>jsonCheck(json).data.item.map((d: IApiIndexTopRcmdResponse) => {
         d.author = d.owner.name;
         d.play = d.stat.view;
