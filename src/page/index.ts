@@ -14,6 +14,7 @@ import { debug } from "../utils/debug";
 import { addElement, offset } from "../utils/element";
 import { integerFormat } from "../utils/format/integer";
 import { unitFormat } from "../utils/format/unit";
+import { pubdateFormat } from "../utils/format/time";
 import { objUrl, urlObj } from "../utils/format/url";
 import { jsonpHook } from "../utils/hook/node";
 import { xhrHook } from "../utils/hook/xhr";
@@ -54,17 +55,19 @@ const REGION_FEED_CODES: Record<number, number> = {
     202: 1009
 };
 
-const RANKING_REGION_CODES: Record<number, number> = {
-    1: 1005,
-    3: 1003,
-    4: 1008,
-    5: 1002,
-    36: 1010,
-    119: 1007,
-    129: 1004,
-    155: 1014,
-    181: 1001,
-    188: 1012
+const RANKING_REGION_CODES: Record<number, number[]> = {
+    1: [1005],
+    3: [1003],
+    4: [1008],
+    5: [1002],
+    36: [1010],
+    119: [1007],
+    129: [1004],
+    155: [1014],
+    181: [1001],
+    188: [1012],
+    // 160 生活：官方 1029/1031 仍是 2025-03 冻结数据，改用可用的 1018/1024/1013 合并
+    160: [1018, 1024, 1013]
 };
 
 const PGC_FEED_NAMES: Record<number, string> = {
@@ -97,19 +100,30 @@ async function fetchRegionFeed(tid: number) {
 }
 
 async function fetchRankingList(tid: number, type: "all" | "origin") {
-    const region = RANKING_REGION_CODES[tid];
-    if (!region) return <any[]>[];
+    const regions = RANKING_REGION_CODES[tid];
+    if (!regions || !regions.length) return <any[]>[];
     try {
-        const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
-            rid: region,
-            type,
-            web_location: 333.934
-        }, {
-            credentials: "include"
-        });
-        const json = await response.json();
-        if (json.code !== 0 || !json.data || !Array.isArray(json.data.list)) return <any[]>[];
-        return json.data.list.map((d: any) => ({
+        // 一个旧分区可能对应多个新版分区（生活区被拆散），合并去重后按来源顺序返回
+        const lists = await Promise.all(regions.map(async region => {
+            const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
+                rid: region,
+                type,
+                web_location: 333.934
+            }, {
+                credentials: "include"
+            });
+            const json = await response.json();
+            return json.code === 0 && json.data && Array.isArray(json.data.list) ? <any[]>json.data.list : <any[]>[];
+        }));
+        const seen = new Set<any>();
+        const list: any[] = [];
+        for (const d of lists.reduce((s, l) => s.concat(l), <any[]>[])) {
+            const key = d.aid || d.bvid;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            list.push(d);
+        }
+        return list.map((d: any) => ({
             ...d,
             play: d.stat?.view || 0,
             video_review: d.stat?.danmaku || 0,
@@ -120,7 +134,9 @@ async function fetchRankingList(tid: number, type: "all" | "origin") {
             author: d.owner?.name || "",
             mid: d.owner?.mid || 0,
             description: d.desc || "",
-            typename: d.tname || ""
+            typename: d.tname || "",
+            // 悬停预览的投稿日期读 create / created_at，ranking/v2 只有 pubdate
+            create: pubdateFormat(d.pubdate)
         }));
     } catch (e) {
         debug.error("ranking", e);
@@ -183,6 +199,7 @@ export class PageIndex extends Page {
         this.newlist();
         this.region();
         this.rankingList();
+        this.online();
         this.recommendSpecial();
         Header.primaryMenu();
         Header.banner();
@@ -279,6 +296,30 @@ export class PageIndex extends Page {
             const data = await fetchRankingList(tid, type);
             return { code: 0, message: "0", ttl: 1, data };
         }, false);
+    }
+    /**
+     * 主页"在线列表"：旧接口的 web_online/play_online 已下线，只剩 region_count，
+     * 这里汇总后按旧版脚本的文案显示在线人数（原来只显示"在线列表"四个字）。
+     */
+    protected online() {
+        poll(() => document.querySelector('.online'), () => {
+            fetch("https://api.bilibili.com/x/web-interface/online", { credentials: "include" })
+                .then(d => d.json())
+                .then(d => {
+                    const counts = d?.data?.region_count;
+                    if (!counts) return;
+                    const total = Object.keys(counts).reduce((s, k) => s + Number(counts[k] || 0), 0);
+                    if (!total) return;
+                    const text = unitFormat(total);
+                    document.querySelectorAll('.online').forEach(el => {
+                        const anchor = el.tagName === "DIV" ? el.querySelector('a') : <HTMLElement>el;
+                        if (!anchor) return;
+                        anchor.title = `在线观看：${text}`;
+                        anchor.textContent = `在线人数：${text}`;
+                    });
+                })
+                .catch(e => debug.error("online", e));
+        });
     }
     /** 修复直播推荐 */
     protected roomRecommend() {

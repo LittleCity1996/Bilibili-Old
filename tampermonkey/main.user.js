@@ -9120,6 +9120,12 @@ const MODULES = `
     day[2] = integerFormat(day[2], 2);
     return type ? day.join("-") + " " + arr2[1] : arr2[1];
   }
+  function pubdateFormat(second) {
+    if (!second) return "";
+    const date = new Date(second * 1e3);
+    const pad = (n) => String(n).padStart(2, "0");
+    return \`\${date.getFullYear()}-\${pad(date.getMonth() + 1)}-\${pad(date.getDate())} \${pad(date.getHours())}:\${pad(date.getMinutes())}\`;
+  }
 
   // src/utils/debug.ts
   var group = {
@@ -27337,16 +27343,18 @@ const MODULES = `
     202: 1009
   };
   var RANKING_REGION_CODES = {
-    1: 1005,
-    3: 1003,
-    4: 1008,
-    5: 1002,
-    36: 1010,
-    119: 1007,
-    129: 1004,
-    155: 1014,
-    181: 1001,
-    188: 1012
+    1: [1005],
+    3: [1003],
+    4: [1008],
+    5: [1002],
+    36: [1010],
+    119: [1007],
+    129: [1004],
+    155: [1014],
+    181: [1001],
+    188: [1012],
+    // 160 生活：官方 1029/1031 仍是 2025-03 冻结数据，改用可用的 1018/1024/1013 合并
+    160: [1018, 1024, 1013]
   };
   var PGC_FEED_NAMES = {
     23: "movie",
@@ -27376,19 +27384,29 @@ const MODULES = `
     }));
   }
   async function fetchRankingList(tid, type) {
-    const region = RANKING_REGION_CODES[tid];
-    if (!region) return [];
+    const regions = RANKING_REGION_CODES[tid];
+    if (!regions || !regions.length) return [];
     try {
-      const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
-        rid: region,
-        type,
-        web_location: 333.934
-      }, {
-        credentials: "include"
-      });
-      const json = await response.json();
-      if (json.code !== 0 || !json.data || !Array.isArray(json.data.list)) return [];
-      return json.data.list.map((d) => {
+      const lists = await Promise.all(regions.map(async (region) => {
+        const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
+          rid: region,
+          type,
+          web_location: 333.934
+        }, {
+          credentials: "include"
+        });
+        const json = await response.json();
+        return json.code === 0 && json.data && Array.isArray(json.data.list) ? json.data.list : [];
+      }));
+      const seen = /* @__PURE__ */ new Set();
+      const list = [];
+      for (const d of lists.reduce((s, l) => s.concat(l), [])) {
+        const key = d.aid || d.bvid;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        list.push(d);
+      }
+      return list.map((d) => {
         var _a3, _b2, _c, _d, _e, _f, _g;
         return {
           ...d,
@@ -27401,7 +27419,9 @@ const MODULES = `
           author: ((_f = d.owner) == null ? void 0 : _f.name) || "",
           mid: ((_g = d.owner) == null ? void 0 : _g.mid) || 0,
           description: d.desc || "",
-          typename: d.tname || ""
+          typename: d.tname || "",
+          // 悬停预览的投稿日期读 create / created_at，ranking/v2 只有 pubdate
+          create: pubdateFormat(d.pubdate)
         };
       });
     } catch (e) {
@@ -27463,6 +27483,7 @@ const MODULES = `
       this.newlist();
       this.region();
       this.rankingList();
+      this.online();
       this.recommendSpecial();
       Header.primaryMenu();
       Header.banner();
@@ -27567,6 +27588,28 @@ const MODULES = `
         const data = await fetchRankingList(tid, type);
         return { code: 0, message: "0", ttl: 1, data };
       }, false);
+    }
+    /**
+     * 主页"在线列表"：旧接口的 web_online/play_online 已下线，只剩 region_count，
+     * 这里汇总后按旧版脚本的文案显示在线人数（原来只显示"在线列表"四个字）。
+     */
+    online() {
+      poll(() => document.querySelector(".online"), () => {
+        fetch("https://api.bilibili.com/x/web-interface/online", { credentials: "include" }).then((d) => d.json()).then((d) => {
+          var _a3;
+          const counts = (_a3 = d == null ? void 0 : d.data) == null ? void 0 : _a3.region_count;
+          if (!counts) return;
+          const total = Object.keys(counts).reduce((s, k) => s + Number(counts[k] || 0), 0);
+          if (!total) return;
+          const text = unitFormat(total);
+          document.querySelectorAll(".online").forEach((el) => {
+            const anchor = el.tagName === "DIV" ? el.querySelector("a") : el;
+            if (!anchor) return;
+            anchor.title = \`在线观看：\${text}\`;
+            anchor.textContent = \`在线人数：\${text}\`;
+          });
+        }).catch((e) => debug.error("online", e));
+      });
     }
     /** 修复直播推荐 */
     roomRecommend() {
@@ -43177,106 +43220,283 @@ const MODULES = `
   var channel_default = '<!DOCTYPE html>\\r\\n<html lang="zh-Hans">\\r\\n\\r\\n<head>\\r\\n    <meta charset="utf-8">\\r\\n    <title>电影 - 哔哩哔哩 (゜-゜)つロ 干杯~-bilibili</title>\\r\\n    <meta name="description" content="bilibili是国内知名的视频弹幕网站，这里有最及时的动漫新番，最棒的ACG氛围，最有创意的Up主。大家可以在这里找到许多欢乐。">\\r\\n    <meta name="keywords" content="B站,弹幕,字幕,AMV,MAD,MTV,ANIME,动漫,动漫音乐,游戏,游戏解说,ACG,galgame,动画,番组,新番,初音,洛天依,vocaloid">\\r\\n    <meta name="renderer" content="webkit">\\r\\n    <meta http-equiv="X-UA-Compatible" content="IE=edge">\\r\\n    <meta name="baidu-site-verification" content="gbRdPloQBZ">\\r\\n    <link rel="dns-prefetch" href="//s1.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//s2.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//s3.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//i0.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//i1.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//i2.hdslb.com">\\r\\n    <link rel="dns-prefetch" href="//static.hdslb.com">\\r\\n    <link rel="shortcut icon" href="//static.hdslb.com/images/favicon.ico">\\r\\n    <link rel="search" type="application/opensearchdescription+xml" href="//static.hdslb.com/opensearch.xml"\\r\\n        title="哔哩哔哩">\\r\\n    <link rel="stylesheet"\\r\\n        href="//s1.hdslb.com/bfs/static/jinkela/channel/css/channel.0.3b9fda2987ca292257243b2aca871e4741de39fd.css">\\r\\n    <style>\\r\\n        .pgc-rank-list .rank-item.highlight .ri-num {\\r\\n            background: #f25d8e;\\r\\n        }\\r\\n\\r\\n        .pgc-rank-list.v2 .rank-item.highlight .ri-num {\\r\\n            background: #f25d8e;\\r\\n        }\\r\\n    </style>\\r\\n</head>\\r\\n\\r\\n<body>\\r\\n    <div class="z-top-container has-menu"></div>\\r\\n    <div id="channel-app"></div>\\r\\n    <div id="app" data-server-rendered="true"></div>\\r\\n    <script type="text/javascript" src="//static.hdslb.com/js/jquery.min.js"><\\/script>\\r\\n    <script type="text/javascript" src="//s1.hdslb.com/bfs/seed/jinkela/header/header.js"><\\/script>\\r\\n    <script type="text/javascript" src="//s1.hdslb.com/bfs/cm/st/bundle.js"><\\/script>\\r\\n    <script src="//s1.hdslb.com/bfs/static/jinkela/channel/1.channel.3b9fda2987ca292257243b2aca871e4741de39fd.js"\\r\\n        defer><\\/script>\\r\\n    <script src="//s1.hdslb.com/bfs/static/jinkela/channel/channel.3b9fda2987ca292257243b2aca871e4741de39fd.js"\\r\\n        defer><\\/script>\\r\\n    <div class="footer bili-footer report-wrap-module"></div>\\r\\n    <script type="text/javascript" charset="utf-8" src="//static.hdslb.com/common/js/footer.js"><\\/script>\\r\\n</body>\\r\\n\\r\\n</html>';
 
   // src/page/channel/channel.ts
-  var DOUGA = {
-    parent: 1,
-    regions: [24, 25, 47, 210, 86, 27]
+  var CHANNELS = {
+    douga: { route: "douga", parent: 1, regions: [24, 25, 47, 210, 86, 27], locid: 52, rankRegions: [1005] },
+    music: { route: "music", parent: 3, regions: [28, 31, 30, 194, 59, 193, 29, 130], locid: 58, rankRegions: [1003] },
+    dance: { route: "dance", parent: 129, regions: [20, 198, 199, 200, 154, 156], locid: 64, rankRegions: [1004] },
+    game: { route: "game", parent: 4, regions: [17, 171, 172, 65, 173, 121, 136, 19], locid: 70, rankRegions: [1008] },
+    knowledge: { route: "technology", parent: 36, regions: [201, 124, 207, 208, 209, 122], locid: 76, rankRegions: [1010] },
+    tech: { route: "digital", parent: 188, regions: [95, 189, 190, 191], locid: 2977, rankRegions: [1012] },
+    // 1029/1031 仍是 2025 冻结数据，改用可用的 1018/1024/1013 合并补齐
+    life: { route: "life", parent: 160, regions: [138, 21, 75, 161, 162, 163, 176, 174], locid: 88, rankRegions: [1018, 1024, 1013] },
+    food: { route: "food", parent: 211, regions: [76, 212, 213, 214, 215], locid: 4243, rankRegions: [1020] },
+    kichiku: { route: "kichiku", parent: 119, regions: [22, 26, 126, 216, 127], locid: 100, rankRegions: [1007] },
+    fashion: { route: "fashion", parent: 155, regions: [157, 158, 164, 159, 192], locid: 94, rankRegions: [1014] },
+    // 资讯的新版分区已下线（1009 返回 -400），排行暂无实时来源
+    information: { route: "information", parent: 202, regions: [203, 204, 205, 206], locid: 4076, rankRegions: [] },
+    ent: { route: "ent", parent: 5, regions: [71, 137], locid: 82, rankRegions: [1002] },
+    cinephile: { route: "cinephile", parent: 181, regions: [182, 183, 85, 184], locid: 2211, rankRegions: [1001] }
   };
+  var LEGACY_ROUTES = {};
+  Object.keys(CHANNELS).forEach((key) => {
+    const route = CHANNELS[key].route;
+    if (route !== key) LEGACY_ROUTES[route] = key;
+  });
+  function matchPageChannel(pathname) {
+    const match = pathname.match(/^\\/(?:c|v)\\/([a-z]+)\\/?\$/);
+    if (!match) return void 0;
+    const name = match[1];
+    if (CHANNELS[name]) return name;
+    return LEGACY_ROUTES[name];
+  }
   var PageChannel = class extends Page {
-    feedCache = /* @__PURE__ */ new Map();
-    constructor() {
+    config;
+    /** 父分区最新投稿 */
+    newlistCache = /* @__PURE__ */ new Map();
+    /** region/feed/rcmd（需登录，未登录返回空） */
+    regionFeedCache = /* @__PURE__ */ new Map();
+    /** ranking/v2 */
+    rankCache = /* @__PURE__ */ new Map();
+    constructor(channel) {
+      var _a3;
+      const config = CHANNELS[channel];
+      if (!config) throw new Error(\`unknown channel: \${channel}\`);
       super(channel_default);
+      this.config = config;
       this.rewriteLegacyPath();
-      Header.prid = 1576;
+      Header.prid = (_a3 = Header.tid[config.parent]) != null ? _a3 : 0;
       Header.primaryMenu();
       Header.banner();
       this.initState();
       this.feed();
+      this.ranking();
       this.updateDom();
-      this.sliderData();
+      this.fillBlocks();
     }
     rewriteLegacyPath() {
-      if (/^\\/c\\/douga\\/?\$/.test(location.pathname)) {
-        history.replaceState(null, "", \`/v/douga/\${location.search}\${location.hash}\`);
+      if (/^\\/c\\//.test(location.pathname)) {
+        history.replaceState(null, "", \`/v/\${this.config.route}/\${location.search}\${location.hash}\`);
       }
     }
     initState() {
       propertyHook(window, "__INITIAL_STATE__", void 0);
     }
+    /** 有新动态与最新投稿必须不同源，否则两个标签页内容会一模一样 */
     feed() {
-      const isRegion = (url) => DOUGA.regions.includes(Number(urlObj(url).rid));
+      const regions = this.config.regions;
+      const isRegion = (url) => regions.includes(Number(urlObj(url).rid));
       jsonpHook.async("api.bilibili.com/x/web-interface/dynamic/region", isRegion, async (url) => {
         const obj = urlObj(url);
-        return this.feedResponse(Number(obj.rid), Number(obj.ps) || 15);
+        const archives = await this.dynamicArchives(Number(obj.rid), Number(obj.ps) || 15);
+        return { code: 0, message: "0", ttl: 1, data: { archives } };
       }, false);
       jsonpHook.async("api.bilibili.com/x/web-interface/newlist", isRegion, async (url) => {
         const obj = urlObj(url);
         return this.feedResponse(Number(obj.rid), Number(obj.ps) || 15);
       }, false);
+      jsonpHook.async("api.bilibili.com/x/web-interface/information", isRegion, async (url) => {
+        const obj = urlObj(url);
+        const archives = await this.newestArchives(Number(obj.rid), Number(obj.ps) || 15);
+        const items = archives.map((d) => ({ ...d, cover: d.pic, author: d.owner, id: d.aid }));
+        return { code: 0, message: "0", ttl: 1, data: { items } };
+      }, false);
+    }
+    /** 分区排行榜（右侧热门列）：页面请求的 ranking/region 已冻结，改由 ranking/v2 供数 */
+    ranking() {
+      if (!this.config.rankRegions.length) return;
+      const regions = this.config.regions;
+      jsonpHook.async("api.bilibili.com/x/web-interface/ranking/region", (url) => regions.includes(Number(urlObj(url).rid)), async (url) => {
+        const obj = urlObj(url);
+        const tid = Number(obj.rid);
+        const type = obj.original === "1" ? "origin" : "all";
+        const data = (await this.getRankingByTid(tid, type)).slice(0, 10).map((d) => this.rankItem(d));
+        return { code: 0, message: "0", ttl: 1, data };
+      }, false);
     }
     feedResponse(tid, ps) {
-      return this.feedArchives(tid, ps).then((archives) => {
+      return this.newestArchives(tid, ps).then((archives) => {
         return { code: 0, message: "0", ttl: 1, data: { archives } };
       });
     }
-    async feedArchives(tid, ps) {
+    /** 最新投稿：父分区最新投稿按子分区过滤，按发布时间倒序 */
+    async newestArchives(tid, ps) {
       try {
-        const list = await this.getParentNewlist(DOUGA.parent);
-        const archives = list.filter((d) => d.tid === tid);
-        if (archives.length >= ps) return archives.slice(0, ps);
-        const rank = await this.getRegionRank(tid);
-        const aids = new Set(archives.map((d) => d.aid));
-        return archives.concat(rank.filter((d) => !aids.has(d.aid))).slice(0, ps);
+        const list = await this.getParentNewlist(this.config.parent);
+        return this.pickByTid([list], tid, ps);
       } catch (e) {
-        debug.error("channel feed", e);
+        debug.error("channel newest", e);
         return [];
       }
     }
+    /** 有新动态：分区推荐流优先，其次分区排行（两者都与最新投稿不同源） */
+    async dynamicArchives(tid, ps) {
+      try {
+        const feeds = await Promise.all(this.config.rankRegions.map((code) => this.getRegionFeed(code)));
+        const archives = this.pickByTid(feeds, tid, ps);
+        if (archives.length) return archives;
+        const ranks = await Promise.all(this.config.rankRegions.map((code) => this.getRanking(code, "all")));
+        return this.pickByTid(ranks, tid, ps);
+      } catch (e) {
+        debug.error("channel dynamic", e);
+        return [];
+      }
+    }
+    /** 多来源按子分区 tid 过滤、按 aid 去重、按发布时间倒序取前 ps 条 */
+    pickByTid(lists, tid, ps) {
+      const seen = /* @__PURE__ */ new Set();
+      const archives = [];
+      for (const list of lists) {
+        for (const d of list) {
+          if (d.tid !== tid) continue;
+          const key = d.aid || d.bvid;
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          archives.push(d);
+        }
+      }
+      return archives.sort((a, b) => (b.pubdate || 0) - (a.pubdate || 0)).slice(0, ps);
+    }
+    /** 父分区最新投稿 */
     getParentNewlist(rid) {
-      if (!this.feedCache.has(rid)) {
-        this.feedCache.set(rid, apiNewlist(rid, 50).catch((e) => {
+      if (!this.newlistCache.has(rid)) {
+        this.newlistCache.set(rid, apiNewlist(rid, 50).catch((e) => {
           debug.error("channel newlist", e);
           return [];
         }));
       }
-      return this.feedCache.get(rid);
+      return this.newlistCache.get(rid);
     }
-    async getRegionRank(tid) {
-      try {
-        const response = await fetch(\`https://api.bilibili.com/x/web-interface/ranking/region?rid=\${tid}&day=3&original=0\`, {
-          credentials: "include"
-        });
-        const json = await response.json();
-        if (json.code !== 0 || !Array.isArray(json.data)) return [];
-        return json.data.map((d) => ({
-          ...d,
-          stat: { view: d.play || 0, danmaku: d.video_review || 0, coin: d.coins || 0 },
-          owner: { name: d.author || "", mid: d.mid || 0 },
-          pubdate: d.create ? Math.floor(new Date(d.create).getTime() / 1e3) : 0
-        }));
-      } catch (e) {
-        debug.error("channel ranking feed", e);
-        return [];
+    /** 新版分区推荐流（需登录） */
+    getRegionFeed(code) {
+      if (!this.regionFeedCache.has(code)) {
+        this.regionFeedCache.set(code, (async () => {
+          try {
+            const response = await fetch(objUrl("https://api.bilibili.com/x/web-interface/region/feed/rcmd", {
+              display_id: 1,
+              request_cnt: 30,
+              from_region: code,
+              device: "web",
+              plat: 30,
+              web_location: 333.40138
+            }), {
+              credentials: "include"
+            });
+            const json = await response.json();
+            if (json.code !== 0 || !json.data || !Array.isArray(json.data.archives)) return [];
+            return json.data.archives.map((d) => ({
+              ...d,
+              pic: d.cover || d.pic,
+              owner: d.author,
+              stat: Object.assign({ view: 0, danmaku: 0, coin: 0 }, d.stat)
+            }));
+          } catch (e) {
+            debug.error("channel region feed", e);
+            return [];
+          }
+        })());
       }
+      return this.regionFeedCache.get(code);
+    }
+    /** 新版分区排行 ranking/v2 */
+    getRanking(code, type) {
+      const key = \`\${code}:\${type}\`;
+      if (!this.rankCache.has(key)) {
+        this.rankCache.set(key, (async () => {
+          try {
+            const response = await wbiFetch("https://api.bilibili.com/x/web-interface/ranking/v2", {
+              rid: code,
+              type,
+              web_location: 333.934
+            }, {
+              credentials: "include"
+            });
+            const json = await response.json();
+            if (json.code !== 0 || !json.data || !Array.isArray(json.data.list)) return [];
+            return json.data.list;
+          } catch (e) {
+            debug.error("channel ranking v2", e);
+            return [];
+          }
+        })());
+      }
+      return this.rankCache.get(key);
+    }
+    async getRankingByTid(tid, type) {
+      const lists = await Promise.all(this.config.rankRegions.map((code) => this.getRanking(code, type)));
+      return lists.reduce((s, list) => s.concat(list.filter((d) => d.tid === tid)), []);
+    }
+    /** ranking/v2 字段 -> 旧版排行组件字段 */
+    rankItem(d) {
+      var _a3, _b2, _c, _d, _e, _f, _g;
+      return {
+        ...d,
+        play: ((_a3 = d.stat) == null ? void 0 : _a3.view) || 0,
+        video_review: ((_b2 = d.stat) == null ? void 0 : _b2.danmaku) || 0,
+        favorites: ((_c = d.stat) == null ? void 0 : _c.favorite) || 0,
+        coins: ((_d = d.stat) == null ? void 0 : _d.coin) || 0,
+        review: ((_e = d.stat) == null ? void 0 : _e.reply) || 0,
+        pts: d.score || 0,
+        author: ((_f = d.owner) == null ? void 0 : _f.name) || "",
+        mid: ((_g = d.owner) == null ? void 0 : _g.mid) || 0,
+        description: d.desc || "",
+        typename: d.tname || "",
+        create: pubdateFormat(d.pubdate)
+      };
     }
     get carousel() {
-      switch (BLOD.path[4]) {
-        case "douga":
-          return 4973;
-      }
+      return this.config.locid;
     }
-    sliderData() {
-      const carousel = this.carousel;
-      if (carousel) {
-        poll(() => document.querySelector(".channel-m>.nominate-m"), (slider) => {
-          fetch(\`https://api.bilibili.com/x/web-show/res/locs?pf=0&ids=\${carousel}\`).then((d) => d.json()).then((d) => {
-            var _a3;
-            const data = (_a3 = d == null ? void 0 : d.data) == null ? void 0 : _a3[carousel];
-            if (slider && slider.__vue__ && Array.isArray(data)) {
-              slider.__vue__.sliderData = data.filter((d2) => d2.name);
-            }
-          });
+    /**
+     * 顶部的轮播与"前方高能"原本依赖 res/locs 内容位（locid / Energy 的 titleId,leftId,rightId），
+     * 官方已把这些内容位全部下架（返回 null），组件于是显示"没有数据(-_-#)"。
+     * 这里改用分区实时热门（ranking/v2）填充：等组件自己的请求结束且结果为空时再补。
+     */
+    fillBlocks() {
+      if (!this.config.rankRegions.length) return;
+      const started = Date.now();
+      const settled = (vue) => vue.state !== "loading" || Date.now() - started > 5e3;
+      this.getChannelHot().then((list) => {
+        if (!list.length) return;
+        poll(() => {
+          var _a3;
+          const vue = (_a3 = document.querySelector(".nominate-m")) == null ? void 0 : _a3.__vue__;
+          return vue && settled(vue) ? vue : void 0;
+        }, (vue) => {
+          if (!(vue.sliderData || []).length) vue.sliderData = this.slideItems(list);
         });
+        poll(() => {
+          var _a3;
+          const vue = (_a3 = document.querySelector(".energy-m")) == null ? void 0 : _a3.__vue__;
+          return vue && settled(vue) ? vue : void 0;
+        }, (vue) => {
+          if (!(vue.videoData || []).length) vue.videoData = list.slice(0, 6);
+          if (!(vue.hotData || []).length) vue.hotData = this.slideItems(list).slice(0, 8);
+        });
+      }).catch((e) => debug.error("channel fill blocks", e));
+    }
+    /** 分区实时热门（多个新版 pid 合并去重，保持 ranking/v2 的热度顺序） */
+    async getChannelHot() {
+      const lists = await Promise.all(this.config.rankRegions.map((code) => this.getRanking(code, "all")));
+      const seen = /* @__PURE__ */ new Set();
+      const list = [];
+      for (const d of lists.reduce((s, l) => s.concat(l), [])) {
+        const key = d.aid || d.bvid;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        list.push(d);
       }
+      return list;
+    }
+    /** 轮播/Energy 右侧需要的字段：id/name/title/pic/url(+aid) */
+    slideItems(list) {
+      return list.slice(0, 5).map((d) => ({
+        id: d.aid,
+        aid: d.aid,
+        name: d.title,
+        title: d.title,
+        pic: d.pic,
+        url: \`/video/\${d.bvid}\`
+      }));
     }
   };
 
@@ -43535,8 +43755,9 @@ const MODULES = `
         if (/\\/documentary\\/?\$/.test(location.pathname)) {
           new PageDocumentary();
         }
-        if (/^\\/(?:c|v)\\/douga\\/?\$/.test(location.pathname)) {
-          new PageChannel();
+        const channelRoute = matchPageChannel(location.pathname);
+        if (channelRoute) {
+          new PageChannel(channelRoute);
         }
       }
     }

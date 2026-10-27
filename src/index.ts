@@ -30,7 +30,7 @@ import { UI } from './core/ui';
 import toview from './json/toview.json';
 import { PageHttps, PageWild } from './page/wild';
 import { PageAnime } from './page/channel/anime';
-import { PageChannel } from './page/channel/channel';
+import { PageChannel, matchPageChannel } from './page/channel/channel';
 import { PageMovie } from './page/channel/movie';
 import { PageTv } from './page/channel/tv';
 import { PageDocumentary } from './page/channel/documentary';
@@ -110,8 +110,9 @@ user.addCallback(status => {
             if (/\/documentary\/?$/.test(location.pathname)) {
                 new PageDocumentary();
             }
-            if (/^\/(?:c|v)\/douga\/?$/.test(location.pathname)) {
-                new PageChannel();
+            const channelRoute = matchPageChannel(location.pathname);
+            if (channelRoute) {
+                new PageChannel(channelRoute);
             }
         }
     }

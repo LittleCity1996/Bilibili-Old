@@ -18,6 +18,19 @@ export function timeFormat(time: number = new Date().getTime(), type?: boolean) 
     return type ? day.join("-") + " " + arr[1] : arr[1];
 }
 /**
+ * 格式化秒级时间戳为旧版接口的 `create` 字段格式（悬停预览的投稿日期读它）
+ * @param second 秒级时间戳
+ * @returns 年-月-日 时:分
+ * @example
+ * pubdateFormat(1793001956) // 2026-10-24 13:25
+ */
+export function pubdateFormat(second: number) {
+    if (!second) return "";
+    const date = new Date(second * 1e3);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+/**
  * 格式化秒数
  * @param second 秒数
  * @returns hh: mm: ss
