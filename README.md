@@ -1,3 +1,22 @@
+> **本仓库是 [MotooriKashin/Bilibili-Old](https://github.com/MotooriKashin/Bilibili-Old) 的 fork**，
+> 由 [@LittleCity1996](https://github.com/LittleCity1996) 维护，在上游基础上补充了以下修复：
+>
+> - 普通频道页接管扩展到 13 个分区（上游只有 douga/music，新增 dance、game、knowledge、tech、
+>   life、food、kichiku、fashion、information、ent、cinephile）
+> - 频道页数据实时化：「有新动态」走 `region/feed/rcmd`（拿不到时退回 `ranking/v2`）；
+>   「最新投稿」走父分区 `newlist` 并按子分区 tid 过滤（两个标签不再同源）；
+>   右侧排行榜改用 `ranking/v2` 并按子分区 tid 过滤；资讯频道补 `x/web-interface/information`
+>   的 `data.items` 返回形状；官方 `res/locs` 内容位下架后改用实时热门填充轮播与「前方高能」
+> - 主页：排行悬停预览补充投稿日期；生活区排行合并新版 `1018/1024/1013`；恢复「在线列表」的在线人数显示
+>
+> 安装：直接使用本仓库构建的 [`tampermonkey/main.user.js`](https://raw.githubusercontent.com/LittleCity1996/Bilibili-Old/master/tampermonkey/main.user.js)，
+> 或自行 `npm install && npm run tampermonkey` 构建。
+> 上游的功能说明、致谢与 **MIT 许可**同样适用于本 fork，版权归原作者所有。
+
+
+
+
+
 ![Windows 11](https://img.shields.io/badge/Microsoft_Windows_11-pass-green.svg?longCache=true) ![Chrome 108](https://img.shields.io/badge/Google_Chrome_108-pass-green.svg?longCache=true) ![Tampermonkey 4.18](https://img.shields.io/badge/Tampermonkey_4.18-pass-green.svg?longCache=true)  ![Manifest V3](https://img.shields.io/badge/Manifest_V3-pass-green.svg?longCache=true)  
 
 Manifest V3扩展和Tampermonkey用户脚本，恢复B站旧版网页，包括小电视播放器。
